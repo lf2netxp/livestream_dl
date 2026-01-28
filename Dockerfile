@@ -1,58 +1,87 @@
-# Stage 1: Get the Deno binary
-FROM denoland/deno:bin AS deno_bin
+FROM python:3.13-slim-bookworm
 
-# Stage 2: Get the GLIBC libraries (Debian-based)
-FROM gcr.io/distroless/cc AS cc
-
-# Stage 3: Final Image
-FROM python:3.13-alpine
+# 1. 安裝 ffmpeg、git 和 bash
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    git \
+    curl \
+    ca-certificates \
+    bash \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 1. Install Alpine-native tools (FFmpeg and Python use these)
-RUN apk add --no-cache ffmpeg
+# 2. 複製 requirements.txt 並安裝依賴
+COPY requirements.txt .
+RUN if [ -f "requirements.txt" ]; then \
+        pip install --no-cache-dir -r requirements.txt; \
+    else \
+        echo "警告: requirements.txt 不存在，跳過 pip 安裝"; \
+    fi
 
-# 2. Copy GLIBC libraries for Deno (from Stage 2)
-# We put them in a dedicated folder to avoid "poisoning" the system
-COPY --from=cc /lib/*-linux-gnu/* /usr/glibc/lib/
-COPY --from=cc /lib/ld-linux-* /lib/
-
-# 3. Set up the dynamic loader symlink (Deno requires this)
-RUN mkdir /lib64 && ln -s /usr/glibc/lib/ld-linux-* /lib64/
-
-# 4. Copy the Deno binary
-COPY --from=deno_bin /deno /usr/local/bin/deno-raw
-
-# 5. CREATE THE WRAPPER (This is the secret sauce)
-# This script runs Deno WITH the special libraries, while keeping the rest of the system clean.
-RUN echo '#!/bin/sh' > /usr/local/bin/deno && \
-    echo 'LD_LIBRARY_PATH=/usr/glibc/lib exec /usr/local/bin/deno-raw "$@"' >> /usr/local/bin/deno && \
-    chmod +x /usr/local/bin/deno
-
-# 6. Install Python dependencies and apply patches
+# 3. 複製所有程序文件（包括補丁腳本）
 COPY . .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install -U --no-cache-dir --pre yt-dlp[default]
 
-RUN (sed -i "s/socs.value.startswith('CAA')/str(socs).startswith('CAA')/g" /usr/local/lib/python*/site-packages/chat_downloader/sites/youtube.py) ; \
-    (sed -i "/if[[:space:]]\+fmt_stream\.get('targetDurationSec'):/,/^[[:space:]]*continue/s/^[[:space:]]*/&#/" "$(pip show yt-dlp | awk '/Location/ {print $2}')/yt_dlp/extractor/youtube/_video.py")
+# 4. 創建必要的運行目錄
+RUN mkdir -p YTliveDL TEMPdelete
 
-RUN mkdir -p /app/temp /app/downloads && chmod +x *.py
+# 5. 安裝 yt-dlp 和 ejs
+RUN echo "========================================" && \
+    echo "  同時安裝 yt-dlp 和 ejs" && \
+    echo "========================================" && \
+    # 使用實際的提交哈希
+    YTDLP_HASH="5bf91072bcfbb26e6618d668a0b3379a3a862f8c" && \
+    EJS_HASH="e91d03f58a9791da2300c5f10a2955af1c5d6d87" && \
+    echo "yt-dlp 提交: $(echo $YTDLP_HASH | cut -c1-7)" && \
+    echo "ejs 提交: $(echo $EJS_HASH | cut -c1-7)" && \
+    echo "========================================" && \
+    # 1. 安裝 yt-dlp
+    echo "1. 安裝 yt-dlp..." && \
+    git init yt-dlp-build && \
+    cd yt-dlp-build && \
+    git remote add origin https://github.com/yt-dlp/yt-dlp.git && \
+    git fetch origin $YTDLP_HASH && \
+    git checkout FETCH_HEAD && \
+    pip install --force-reinstall . && \
+    cd .. && \
+    rm -rf yt-dlp-build && \
+    echo "✅ yt-dlp 安裝完成！" && \
+    # 2. 安裝 ejs
+    echo "2. 安裝 ejs..." && \
+    git init ejs-build && \
+    cd ejs-build && \
+    git remote add origin https://github.com/yt-dlp/ejs.git && \
+    git fetch origin $EJS_HASH && \
+    git checkout FETCH_HEAD && \
+    python hatch_build.py && \
+    pip install --force-reinstall . && \
+    cd .. && \
+    rm -rf ejs-build && \
+    echo "✅ ejs 安裝完成！" && \
+    echo "========================================" && \
+    echo "全部安裝完成！"
 
-WORKDIR /app/downloads
+# 6. 應用 yt-dlp 補丁
+RUN echo "=============================================" && \
+    echo "yt-dlp適配livestream_dl 自動補丁程序" && \
+    echo "=============================================" && \
+    python /app/patch_script.py auto
 
-# 7. Verify all three tools
-RUN python --version && deno --version && ffmpeg -version
+# 7. 最終檢查
+RUN echo "========================================" && \
+    echo "最終檢查..." && \
+    echo "========================================" && \
+    # 檢查 yt-dlp 版本
+    python -c "import yt_dlp; print(f'✅ yt-dlp 版本: {yt_dlp.version.__version__}')" && \
+    # 再次驗證補丁
+    python /app/patch_script.py verify && \
+    # 顯示安裝的套件
+    pip list | grep -E "(yt-dlp|ejs)" && \
+    echo "========================================" && \
+    echo "構建完成！"
 
-CMD ["python", "/app/runner.py", \
-     "--threads", "4", \
-     "--dash", "--m3u8", \
-     "--write-thumbnail", \
-     "--embed-thumbnail", \
-     "--wait-for-video", "60:600", \
-     "--clean-info-json", \
-     "--remove-ip-from-json", \
-     "--live-chat", \
-     "--resolution", "best", \
-     "--write-info-json", \
-     "--log-level", "INFO"]
+# 8. 清理補丁腳本（可選）
+# RUN rm -f /app/patch_script.py
+
+# 9. 設置入口
+ENTRYPOINT ["python", "runner.py"]
