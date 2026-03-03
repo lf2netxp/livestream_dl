@@ -41,12 +41,10 @@ class MyLogger:
             raise yt_dlp.utils.DownloadError("Video is no longer live")
         elif "this live event will begin in" in msg_str.lower() or "premieres in" in msg_str.lower():
             self.logger.info(msg)
+            return # Don't raise, just log
         elif "not available on this app" in msg_str:
             self.logger.error(msg)
             raise yt_dlp.utils.DownloadError(msg_str)
-        elif "should already be available" in msg_str.lower():
-            # This is just a live stream status warning, don't throw an error
-            self.logger.warning(msg)  # Log normally as a warning
         else:
             self.logger.warning(msg)
 
@@ -149,9 +147,6 @@ def get_Video_Info(id, wait=True, cookies=None, additional_options=None, proxy=N
                 raise VideoInaccessibleError("Video {0} not available on this player".format(id))
             elif "no longer live" in str(e).lower():
                 raise LivestreamError("Livestream has ended")
-            elif "should already be available" in str(e):
-                # Handle "should already be available" error
-                raise VideoUnavailableError("Live stream is not yet fully available. Please wait a moment and retry")
             else:
                 raise e
         finally:
