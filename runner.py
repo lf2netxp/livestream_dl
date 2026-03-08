@@ -135,11 +135,21 @@ def monitor_channel(options={}):
     threads: Dict[str, threading.Thread] = {}
     last_check = time()
     channel_id: str = options.get("ID")
-    tab = "membership" if options.get("members_only", False) else "streams"
+    
+    # 決定使用哪個標籤頁
+    if options.get("members_only", False):
+        tab = "membership"
+    else:
+        tab = "streams"
+    
+    # 記錄 use_stream_tab 設定
+    logger.debug(f"Monitor mode: tab='{tab}', use_stream_tab={options.get('use_stream_tab', False)}")
+    
     if not options.get("wait_for_video", None):
         options["wait_for_video"] = (60, None)
     wait = max((num for num in options.get("wait_for_video", []) if isinstance(num, (int, float))), default=60)
 
+    # 解析頻道 ID（如果還不是 UC 格式）
     while not channel_id.startswith("UC"):
         new_channel_id = monitor_channel.resolve_channel(channel_id) or ""
         # Break if resolved and start search
@@ -151,14 +161,23 @@ def monitor_channel(options={}):
         sleep(time_to_next)
         last_check=time()
 
-    logger.debug("Starting runner for channel: '{0}' on tab: '{1}'".format(channel_id, tab))
+    logger.debug("Starting runner for channel: '{0}' on tab: '{1}' (use_stream_tab={2})".format(
+        channel_id, tab, options.get('use_stream_tab', False)))
+    
     while True:
         for id, thread in list(threads.items()):
             if not thread.is_alive():
                 threads.pop(id)
         logger.debug("Searching for streams for channel {0}".format(channel_id))
         try:
-            videos_to_get = monitor_channel.get_upcoming_or_live_videos(channel_id=channel_id, tab=tab, options=options, logger=logger)
+            # 傳遞 use_stream_tab 選項
+            videos_to_get = monitor_channel.get_upcoming_or_live_videos(
+                channel_id=channel_id, 
+                tab=tab, 
+                options=options,  # options 已經包含 use_stream_tab
+                logger=logger
+            )
+            
             for video_id in videos_to_get:
                 if threads.get(video_id, None) is not None:
                     continue
@@ -321,6 +340,9 @@ if __name__ == "__main__":
     monitor_group.add_argument('--monitor-channel', action='store_true', help="Use monitor channel feature (Alpha). Specify channel ID in 'ID' argument (e.g. UCxsZ6NCzjU_t4YSxQLBcM5A). Not using the channel ID will attempt to resolve the channel ID.")
 
     monitor_group.add_argument('--members-only', action='store_true', help="Monitor 'Members Only' playlist for streams instead of 'Streams' playlist. Requires cookies.")
+
+    # 添加新參數 - 使用 streams 標籤頁而不是 UU 播放列表
+    monitor_group.add_argument('--use-stream-tab', action='store_true', help="Use channel's streams tab (UCxxx/streams) instead of UU playlist (playlist?list=UU...) for monitoring.")
 
     monitor_group.add_argument('--upcoming-lookahead', type=int, default=24, help="Maximum time (in hours) to start a downloader instance for a video.")
 
