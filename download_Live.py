@@ -999,51 +999,46 @@ class LiveStreamDownloader:
         return f"{bytes:.2f} {units[unit_index]}"
 
     def print_stats(self, options):
+        # 定義黃色
+        YELLOW = '\033[93m'
+        RESET = '\033[0m'
+        CLEAR = '\033[K'
+        
         if options.get('stats_as_json', False):
-            # \033[K clears the line after printing the JSON
-            print(f"\r{json.dumps(self.stats)}\033[K", end="", flush=True)
+            print(f"\r{YELLOW}{json.dumps(self.stats)}{RESET}{CLEAR}", end="", flush=True)
             return
 
         if self.logger.getEffectiveLevel() > logging.INFO:
-            #print("Log level too high for printing: {0}".format(self.logger.getEffectiveLevel()))
             return
 
         if not (self.stats.get('video') or self.stats.get('audio')):
-            #print("No stats available")
-            #print(json.dumps(self.stats))
             return
 
-        # Build the output parts in a list
-        parts = [f"{self.stats.get('id')}:"]
-
+        # 構建輸出
+        stats_line = f"{YELLOW}{self.stats.get('id')}: "
+        
         if self.stats.get('video'):
-            v = self.stats.get('video', {})
-            v_str = f"Video: {v.get('downloaded_segments', 0)}/{v.get('latest_sequence', 0)}"
+            v = self.stats.get('video')
+            stats_line += f"Video: {v.get('downloaded_segments', 0)}/{v.get('latest_sequence', 0)} "
             if v.get('status'):
-                v_str += f" ({v.get('status').capitalize()})"
-            parts.append(v_str)
-
+                stats_line += f"({v.get('status').capitalize()}) "
+        
         if self.stats.get('audio'):
-            a = self.stats.get('audio', {})
-            a_str = f"Audio: {a.get('downloaded_segments', 0)}/{a.get('latest_sequence', 0)}"
-            # Note: Fixed a likely typo in your original code where you checked 
-            # video status while printing audio stats
+            a = self.stats.get('audio')
+            stats_line += f"Audio: {a.get('downloaded_segments', 0)}/{a.get('latest_sequence', 0)} "
             if a.get('status'):
-                a_str += f" ({a.get('status').capitalize()})"
-            parts.append(a_str)
-
+                stats_line += f"({a.get('status').capitalize()}) "
+        
         if self.stats.get('video', {}).get('current_filesize') or self.stats.get('audio', {}).get('current_filesize'):
             size = self.stats.get('video', {}).get('current_filesize', 0) + self.stats.get('audio', {}).get('current_filesize', 0)
-            parts.append(f"~{self.convert_bytes(size)} downloaded")
-
-        # Join everything with commas or spaces
-        full_line = " ".join(parts)
+            stats_line += f"~{self.convert_bytes(size)} downloaded"
+        
+        stats_line += f"{RESET}"
 
         if options.get("new_line", False):
-            print(full_line)
+            print(stats_line)
         else:
-            # \r moves to start, \033[K clears anything left over from the previous longer line
-            print(f"\r{full_line}\033[K", end="", flush=True)
+            print(f"\r{stats_line}{CLEAR}", end="", flush=True)
         
     def add_url_param(self, url: str, key, value) -> str:
         parsed = urlparse(url)
