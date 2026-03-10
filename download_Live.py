@@ -1232,12 +1232,9 @@ class LiveStreamDownloader:
             return
 
         if self.logger.getEffectiveLevel() > logging.INFO:
-            #print("Log level too high for printing: {0}".format(self.logger.getEffectiveLevel()))
             return
 
         if not (self.stats.get('video') or self.stats.get('audio')):
-            #print("No stats available")
-            #print(json.dumps(self.stats))
             return
 
         # Build the output parts in a list
@@ -1253,8 +1250,6 @@ class LiveStreamDownloader:
         if self.stats.get('audio'):
             a = self.stats.get('audio', {})
             a_str = f"Audio: {a.get('downloaded_segments', 0)}/{a.get('latest_sequence', 0)}"
-            # Note: Fixed a likely typo in your original code where you checked 
-            # video status while printing audio stats
             if a.get('status'):
                 a_str += f" ({a.get('status').capitalize()})"
             parts.append(a_str)
@@ -1265,12 +1260,15 @@ class LiveStreamDownloader:
 
         # Join everything with commas or spaces
         full_line = " ".join(parts)
+        
+        # 添加亮綠色 ANSI 代碼
+        green_full_line = f"\033[92m{full_line}\033[0m"  # 使用亮綠色
 
         if options.get("new_line", False):
-            print(full_line)
+            print(green_full_line)
         else:
             # \r moves to start, \033[K clears anything left over from the previous longer line
-            print(f"\r{full_line}\033[K", end="", flush=True)
+            print(f"\r{green_full_line}\033[K", end="", flush=True)
         """
     def add_url_param(self, url: str, key, value) -> str:
         parsed = urlparse(url)
