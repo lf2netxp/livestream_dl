@@ -399,7 +399,7 @@ class LiveStreamDownloader:
                                 #        raise future.exception()
                                 
                                 result, type = future.result()
-                                self.logger.log(setup_logger.VERBOSE_LEVEL_NUM, "\033[93m{0}\033[0m".format(result))
+                                self.logger.info("\033[93m{0}\033[0m".format(result))
                                 
                                 if type == 'auxiliary':
                                     self.file_names.update(result)
@@ -1281,12 +1281,14 @@ class LiveStreamDownloader:
 
         # Join everything with commas or spaces
         full_line = " ".join(parts)
+        # 添加亮綠色 ANSI 代碼
+        green_full_line = f"\033[92m{full_line}\033[0m"  # 使用亮綠色
 
         if options.get("new_line", False):
-            print(full_line)
+            print(green_full_line)
         else:
             # \r moves to start, \033[K clears anything left over from the previous longer line
-            print(f"\r{full_line}\033[K", end="", flush=True)
+            print(f"\r{green_full_line}\033[K", end="", flush=True)
         """
     def add_url_param(self, url: str, key, value) -> str:
         parsed = urlparse(url)
